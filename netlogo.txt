@@ -1,0 +1,41 @@
+Comandos NetLogo
+
+show => println
+
+breeds => espécies => "classes"
+	algumas nativas: 
+		- Turtle
+		
+Criar agentes: create-<plural da espécie> <quantidade> ["construtor"]
+Limpar agentes: clear-<plural da espécie>
+		    clear all
+
+Limpar ticks: reset-ticks
+
+; -> comentário
+agentset -> conjunto de agentes
+		
+Movimentação
+- forward <qtd de passos>
+- left <graus>
+- right <graus>
+
+Outros
+- random <max> -> número randômico de 0 até <max>
+- random-xcor e random-ycor -> coordenadas randômicas
+- tick -> contabiliza um tick
+- with e where -> filtrar agentset
+- let <nomeVariavel> -> criar variável
+- word <args> -> concatena coisas
+- set <arg> <value> -> atribuir valor
+- n-of <size> <agentset> -> pedir para que x elementos de y agente faça algo
+- to nomeDoMetodo -> criar método
+- to-report nomeDoMetodo com retorno -> criar método com retorno
+- if <condição> [...]
+- ifelse <condição> [...] [...]
+- if [atr] of <agentset>
+
+ask <quem> [
+	...comandos
+]		
+
