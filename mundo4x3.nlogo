@@ -1,88 +1,115 @@
-extensions [gis]
+; The 4x3 world, from the book Russel & Norvig - Artificial Intelligence: A Modern Approach.
+; NetLogo implementation: Fernando Santos (fernando.santos@udesc.br)
+; Version: 20220930
 
-breed [Humanos Humano]
+extensions [ array ]
+; check https://ccl.northwestern.edu/netlogo/docs/array.html for instructions on using the array extension
 
-Humanos-own [
-  compartimentoGripe
-  duracaoInfectado
+globals [
+  elapsedEpisodes
 ]
 
-patches-own [
-  populacaoInicial
+patches-own[
+  reward
+  isWall
+  isEndState
+]
+
+turtles-own[
+  utility ; to log the utility of an episode (sum of received rewards)
 ]
 
 to setup
   clear-all
   reset-ticks
-
-  let dadosPopulacao gis:load-dataset "population-300.asc"
-  gis:set-world-envelope-ds gis:envelope-of dadosPopulacao
-  gis:apply-raster dadosPopulacao populacaoInicial
+  set elapsedEpisodes 0
 
   ask patches [
-    sprout-Humanos populacaoInicial [
-      set compartimentoGripe "S"
-      colorirAgente
-    ]
+    set pcolor white
+    set reward -0.04
+    set isWall false
+    set isEndState false
   ]
 
-  ask n-of 10 Humanos [
-    set compartimentoGripe "I"
-    colorirAgente
+  ask patch 1 1 [ ; the wall
+    set pcolor black
+    set isWall true
   ]
-end
 
-to go
-  tick
-  ask Humanos [
-    moverAgente
-    atualizarCompartimentoHumano
-    colorirAgente
+  ask patch 3 1 [ ; negative goal
+    set isEndState true
+    set reward -1.00
+    set pcolor 19
   ]
-end
+  ask patch 3 2 [ ; positive goal
+    set isEndState true
+    set reward 1.00
+    set pcolor 69
+  ]
 
-to moverAgente
-  let patchesDistancia patches in-radius 5.5
-  move-to one-of patchesDistancia
-end
+  ask patches [
+    set plabel reward
+    set plabel-color black
+  ]
 
-to atualizarCompartimentoHumano
-  if compartimentoGripe = "I" [
-    ask Humanos-here with [ compartimentoGripe = "S"] [
-      if random-float 1 < 1 [
-        set compartimentoGripe "I"
-        set duracaoInfectado 0
-      ]
-    ]
-    if-else duracaoInfectado = 9 [
-      set compartimentoGripe "R"
-    ][
-      set duracaoInfectado duracaoInfectado + 1
-    ]
+  create-turtles 1 [
+    set xcor 0
+    set ycor 0
+    set shape "car"
+    set heading 0
+    set utility [reward] of patch-here
   ]
 end
 
+to newEpisode
+  move-to patch 0 0
+  set elapsedEpisodes elapsedEpisodes + 1;
+  set utility [reward] of patch-here
+end
 
-to colorirAgente
-  if-else compartimentoGripe = "S" [
-    set color green
-  ][
-    if-else compartimentoGripe = "I" [
-      set color red
-    ][
-      set color blue
-    ]
+to qLearning
+  ; main foreach of the QLearning algorithm
+end
+
+to qLearningStep
+  ; do-while of the QLearning algorithm
+end
+
+to goUp
+  set heading 0
+  move
+end
+
+to goDown
+  set heading 180
+  move
+end
+
+to goLeft
+  set heading 270
+  move
+end
+
+to goRight
+  set heading 90
+  move
+end
+
+to move
+  if patch-ahead 1 != nobody and not [isWall] of patch-ahead 1 [
+    move-to patch-ahead 1
   ]
+  set utility utility + [reward] of patch-here
 end
 @#$#@#$#@
 GRAPHICS-WINDOW
-210
+219
 10
-868
-669
+627
+319
 -1
 -1
-13.0
+100.0
 1
 10
 1
@@ -93,9 +120,9 @@ GRAPHICS-WINDOW
 0
 1
 0
-49
+3
 0
-49
+2
 0
 0
 1
@@ -103,10 +130,10 @@ ticks
 30.0
 
 BUTTON
-10
-15
-73
-48
+13
+28
+86
+61
 NIL
 setup
 NIL
@@ -120,13 +147,63 @@ NIL
 1
 
 BUTTON
-118
-17
-181
-50
+694
+83
+830
+116
 NIL
-go
+qLearningStep
+NIL
+1
 T
+TURTLE
+NIL
+NIL
+NIL
+NIL
+1
+
+INPUTBOX
+651
+12
+762
+76
+learningRate
+1.0
+1
+0
+Number
+
+INPUTBOX
+769
+12
+881
+77
+discountFactor
+1.0
+1
+0
+Number
+
+INPUTBOX
+650
+133
+776
+196
+learningEpisodes
+300.0
+1
+0
+Number
+
+BUTTON
+657
+202
+760
+235
+NIL
+qLearning
+NIL
 1
 T
 OBSERVER
@@ -136,25 +213,122 @@ NIL
 NIL
 1
 
-PLOT
-918
-28
-1118
-178
-Situação dos Agentes
+MONITOR
+649
+244
+774
+289
+NIL
+elapsedEpisodes
+17
+1
+11
+
+BUTTON
+64
+77
+134
+110
+NIL
+goUp
+NIL
+1
+T
+TURTLE
 NIL
 NIL
+NIL
+NIL
+1
+
+BUTTON
+54
+150
+143
+183
+NIL
+goDown
+NIL
+1
+T
+TURTLE
+NIL
+NIL
+NIL
+NIL
+1
+
+BUTTON
+14
+114
+91
+147
+NIL
+goLeft
+NIL
+1
+T
+TURTLE
+NIL
+NIL
+NIL
+NIL
+1
+
+BUTTON
+104
+115
+191
+148
+NIL
+goRight
+NIL
+1
+T
+TURTLE
+NIL
+NIL
+NIL
+NIL
+1
+
+BUTTON
+95
+29
+213
+62
+NIL
+newEpisode
+NIL
+1
+T
+TURTLE
+NIL
+NIL
+NIL
+NIL
+1
+
+MONITOR
+30
+198
+169
+243
+agent utility
+[utility] of turtle 0
+3
+1
+11
+
+TEXTBOX
+27
+249
+190
+294
+The agent utility is the sum of rewards received during the episode
+12
 0.0
-10.0
-0.0
-10.0
-true
-true
-"" ""
-PENS
-"Suscetível" 1.0 0 -14439633 true "" "plot count Humanos with [ compartimentoGripe  = \"S\"]"
-"Infectado" 1.0 0 -2674135 true "" "plot count Humanos with [ compartimentoGripe = \"I\"]"
-"Recuperado" 1.0 0 -14730904 true "" "plot count Humanos with [ compartimentoGripe = \"R\"]"
+1
 
 @#$#@#$#@
 ## WHAT IS IT?
