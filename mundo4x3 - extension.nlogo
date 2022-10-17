@@ -2,18 +2,18 @@
 ; NetLogo implementation: Fernando Santos (fernando.santos@udesc.br)
 ; Version: 20220930
 
-extensions [ array ]
+extensions [ array qlearningextension]
 ; check https://ccl.northwestern.edu/netlogo/docs/array.html for instructions on using the array extension
 
 globals [
   elapsedEpisodes
+  estadoAtual
 ]
 
 patches-own[
   reward
   isWall
   isEndState
-  qValues
 ]
 
 turtles-own[
@@ -30,7 +30,6 @@ to setup
     set reward -0.04
     set isWall false
     set isEndState false
-    set qValues array:from-list n-values 4 [0]
   ]
 
   ask patch 1 1 [ ; the wall
@@ -43,7 +42,6 @@ to setup
     set reward -1.00
     set pcolor 19
   ]
-
   ask patch 3 2 [ ; positive goal
     set isEndState true
     set reward 1.00
@@ -62,6 +60,17 @@ to setup
     set heading 0
     set utility [reward] of patch-here
   ]
+
+  ask turtles [
+    qlearningextension:state-def [ "xcor" "ycor" ]
+    (qlearningextension:actions [goUp] [goRight] [goDown] [goLeft])
+    qlearningextension:reward [ [reward] of patch-here ]
+    qlearningextension:end-episode [ [isEndState] of patch-here ] newEpisode
+    ;qlearningextension:action-selection-random 1
+    qlearningextension:action-selection-egreedy 0.8 "rate" 0.995 ;a cada ep, remanesce 99.5% do epsilon
+    qlearningextension:learning-rate learningRate
+    qlearningextension:discount-factor discountFactor
+  ]
 end
 
 to newEpisode
@@ -71,57 +80,28 @@ to newEpisode
 end
 
 to qLearning
-  ; main foreach of the QLearning algorithm
-  while [elapsedEpisodes < learningEpisodes][
+  ask turtles [
+    set estadoAtual patch-here
+  ]
+
+  while [elapsedEpisodes < learningEpisodes] [
     ask turtles [
       qLearningStep
-      ; ao finalizar o qlearningStep, vai ter finalizado um episódio
-      ; então, reiniciar a simulação (agente)
-      newEpisode
     ]
   ]
-  printQTable
+  ask turtles [
+    print qlearningextension:get-qtable
+  ]
+
 end
 
-to qLearningStep
-  ; do-while of the QLearning algorithm
-  while [not [isEndState] of patch-here][
-    ; salvar o estado atual
-    let s patch-here
-    ;escolher uma ação aleatória
-    let a random 4
-    ;executar a ação
-    if a = 0 [
-      goUp
-    ]
-    if a = 1 [
-      goRight
-    ]
-    if a = 2 [
-      goDown
-    ]
-    if a = 3 [
-      goLeft
-    ]
-    ;observar o novo estado s'
-    let s' patch-here
-
-    ;observar a recompensa recebida por chegar no estado s'
-    let r_s_a [reward] of s'
-
-    ; obter o valor Q maximo do estado s' para qualquer ação
-    let max_q_s'_a' max array:to-list [qValues] of s'
-
-    ; salvar o valor Q(s,a) para facilitar na fórmula
-    let q_s_a array:item ([qValues] of s) a ; uso de parentesis opcional neste caso
-
-    let new_q_s_a q_s_a + learningRate * (r_s_a + discountFactor * max_q_s'_a' - q_s_a)
-
-    ; atualizar Q(s,a)
-    ask s [
-      array:set qValues a new_q_s_a
-    ]
-  ]
+to executeAction [action]
+  (ifelse
+    action = 0 [goUp]
+    action = 1 [goRight]
+    action = 2 [goDown]
+    action = 3 [goLeft]
+  )
 end
 
 to goUp
@@ -151,11 +131,18 @@ to move
   set utility utility + [reward] of patch-here
 end
 
-to printQTable
-  ask patches [
-    show qValues
+to qLearningStep
+  let currentEpisode elapsedEpisodes
+  while [currentEpisode = elapsedEpisodes] [
+    qlearningextension:learning false
   ]
 end
+
+
+
+
+
+
 @#$#@#$#@
 GRAPHICS-WINDOW
 219
@@ -201,23 +188,6 @@ NIL
 NIL
 1
 
-BUTTON
-694
-83
-830
-116
-NIL
-qLearningStep
-NIL
-1
-T
-TURTLE
-NIL
-NIL
-NIL
-NIL
-1
-
 INPUTBOX
 651
 12
@@ -235,7 +205,7 @@ INPUTBOX
 881
 77
 discountFactor
-1.0
+0.2
 1
 0
 Number
@@ -252,10 +222,10 @@ learningEpisodes
 Number
 
 BUTTON
-657
-202
-760
-235
+650
+206
+753
+239
 NIL
 qLearning
 NIL
@@ -383,6 +353,23 @@ TEXTBOX
 The agent utility is the sum of rewards received during the episode
 12
 0.0
+1
+
+BUTTON
+651
+89
+762
+122
+NIL
+qLearningStep
+NIL
+1
+T
+TURTLE
+NIL
+NIL
+NIL
+NIL
 1
 
 @#$#@#$#@
