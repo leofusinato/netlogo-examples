@@ -1,154 +1,310 @@
-; The 4x3 world, from the book Russel & Norvig - Artificial Intelligence: A Modern Approach.
-; NetLogo implementation: Fernando Santos (fernando.santos@udesc.br)
-; Version: 20220930
+;https://www.gymlibrary.dev/environments/toy_text/taxi/
 
-extensions [ array qlearningextension]
-; check https://ccl.northwestern.edu/netlogo/docs/array.html for instructions on using the array extension
+extensions [ array table ]
+
+breed[taxis taxi]
+
+breed[passengers passenger]
+
+taxis-own[
+  qTable
+  passengerOriginX
+  passengerOriginY
+  passengerDestX
+  passengerDestY
+  passengerBoarded
+  myPassenger
+  action ; the last action taken by the taxi, either "goUp", "goDown", "goLeft", "goRight", "pickUp", "dropOff"
+  actionSuccess ; indicates whether the action completed sucessfully
+                ; used by "pickUp" and "dropOff" actions to indicates where the passenger was successfully picked up or dropped off.
+  utility
+]
 
 globals [
   elapsedEpisodes
-  estadoAtual
 ]
-
 patches-own[
-  reward
-  isWall
   isEndState
 ]
 
 turtles-own[
-  utility ; to log the utility of an episode (sum of received rewards)
+  utility
 ]
 
 to setup
   clear-all
   reset-ticks
-  set elapsedEpisodes 0
+  set elapsedEpisodes -1
 
   ask patches [
     set pcolor white
-    set reward -0.04
-    set isWall false
     set isEndState false
   ]
 
-  ask patch 1 1 [ ; the wall
-    set pcolor black
-    set isWall true
-  ]
-
-  ask patch 3 1 [ ; negative goal
-    set isEndState true
-    set reward -1.00
-    set pcolor 19
-  ]
-  ask patch 3 2 [ ; positive goal
-    set isEndState true
-    set reward 1.00
-    set pcolor 69
-  ]
-
   ask patches [
-    set plabel reward
     set plabel-color black
+    set plabel (word "(" pxcor "," pycor ")")
   ]
 
-  create-turtles 1 [
+  create-passengers 1 [
+    set shape "person"
+    set size 0.5
+  ]
+
+  create-taxis 1 [
     set xcor 0
     set ycor 0
     set shape "car"
     set heading 0
-    set utility [reward] of patch-here
+    set myPassenger nobody
+    set passengerBoarded false
+    set action ""
+    set actionSuccess false
+    newEpisode
+    set qTable table:make ; criar uma table vazia
   ]
+end
 
-  ask turtles [
-    qlearningextension:state-def [ "xcor" "ycor" ]
-    (qlearningextension:actions [goUp] [goRight] [goDown] [goLeft])
-    qlearningextension:reward [ [reward] of patch-here ]
-    qlearningextension:end-episode [ [isEndState] of patch-here ] newEpisode
-    ;qlearningextension:action-selection-random 1
-    qlearningextension:action-selection-egreedy 0.8 "rate" 0
-    qlearningextension:learning-rate learningRate
-    qlearningextension:discount-factor discountFactor
-  ]
+to-report qTableKey [ pasOriX pasOriY pasDestX pasDestY taxiX taxiY pasBoarded]
+  report (word "(" pasOriX "," pasOriY ");(" pasDestX "," pasDestY ");(" taxiX "," taxiY ");" pasBoarded)
 end
 
 to newEpisode
-  move-to patch 0 0
+  ; set the color of the old destination patch and reset its end-state attribute
+  ask patch passengerDestX passengerDestY [
+    set pcolor white
+    set isEndState false
+  ]
+
+  ; pick random origin/destination locations for the passenger
+  set passengerOriginX random-pxcor
+  set passengerOriginY random-pycor
+  set passengerDestX 2 ; fixed destination
+  set passengerDestY 0 ; fixed destination
+  ; adjust the origin position, it must not be the same as the destination position
+  while [passengerDestX = passengerOriginX and passengerDestY = passengerOriginY][
+    set passengerOriginX random-pxcor
+    set passengerOriginY random-pycor
+  ]
+
+  ; move the passenger to its origin position
+  ask passenger 0 [
+    move-to patch [passengerOriginX] of myself [passengerOriginY] of myself
+  ]
+
+  ; set the color of the new destination position and set its end-state attribute
+  ask patch passengerDestX passengerDestY [
+    set pcolor grey
+    set isEndState true
+  ]
+
+  ; move myself (i'm the taxi) to my starting location
+  move-to patch random-pxcor random-pycor
+
+  ; reset my control attributes (i'm the taxi)
+  set passengerBoarded false
+  set myPassenger nobody
+  set utility 0
+
+  ; update global variables
   set elapsedEpisodes elapsedEpisodes + 1;
-  set utility [reward] of patch-here
 end
+
+to-report episodeEnded
+  if [isEndState] of patch-here and action = "dropOff" and count passengers-here > 0 [
+    report true
+  ]
+  report false
+end
+
+to-report reward
+  ; according to https://www.gymlibrary.dev/environments/toy_text/taxi/, the reward is as follows:
+  ; -1 per step unless other reward is triggered.
+  ; +20 delivering passenger.
+  ; -10 executing "pickup" and "drop-off" actions illegally.
+
+  ; computing the reward for each of the above cases...
+  ; +20 delivering passenger.
+  if [isEndState] of patch-here and action = "dropOff" and actionSuccess [;count passengers-here > 0 [
+    report 20
+  ]
+
+  ; -10 executing "pickup" and "drop-off" actions illegally.
+  if action = "pickUp" [
+    if not actionSuccess [
+      report -10
+    ]
+    report -1
+  ]
+
+  ; -10 executing "pickup" and "drop-off" actions illegally.
+  if action = "dropOff" [
+    if not actionSuccess[
+      report -10
+    ]
+    report -1
+  ]
+
+  ; -1 per step unless other reward is triggered.
+  if action = "goUp" or action = "goDown" or action = "goLeft" or action = "goRight" [
+    report -1
+  ]
+end
+
 
 to qLearning
-  ask turtles [
-    set estadoAtual patch-here
-  ]
-
+  ; foreach of the QLearning algorithm
   while [elapsedEpisodes < learningEpisodes] [
-    ask turtles [
-      qLearningStep
+    ask taxis [
+      ; do-while of the QLearning algorithm
+      while [ not episodeEnded ] [
+        qlearningStep
+      ]
+      ; episode ended, reset the agent to run a new episode
+      newEpisode
     ]
   ]
-  ask turtles [
-    print qlearningextension:get-qtable
+  ask taxis [
+    printQTable
   ]
-
 end
 
-to executeAction [action]
-  (ifelse
-    action = 0 [goUp]
-    action = 1 [goRight]
-    action = 2 [goDown]
-    action = 3 [goLeft]
-  )
+to qLearningStep
+  ; salvar o estado atual
+  ; [ pasOriX pasOriY pasDestX pasDestY taxiX taxiY pasBoarded]
+  let s qTableKey passengerOriginX passengerOriginY passengerDestX passengerDestY xcor  ycor passengerBoarded
+
+  ; escolher acao aleatoria
+  let a random 6
+
+  ; executar a ação
+  if a = 0 [
+    goUp
+  ]
+  if a = 1 [
+    goRight
+  ]
+  if a = 2 [
+    goDown
+  ]
+  if a = 3 [
+    goLeft
+  ]
+  if a = 4 [
+    pickUp
+  ]
+  if a = 5 [
+    dropOff
+  ]
+
+  ; observar o novo estado s'
+  let s' qTableKey passengerOriginX passengerOriginY passengerDestX passengerDestY xcor  ycor passengerBoarded
+
+  ; observar recompensa recebida
+  let r_s_a reward
+
+  ; na table, obter o valor Q, do estado s', para a ação qualquer que possui o valor máximo Q
+
+  ; recuperar o array de valores da table, pelo hash
+  let qValues_s' table:get-or-default qTable s' array:from-list n-values 6 [0]
+
+  ; obter o valor Q maximo do estado s' para qualquer ação
+  let max_q_s'_a' max array:to-list qValues_s'
+
+  ; salvar o valor q(s,a) para facilitar na formula
+  let array_q_s_a table:get-or-default qTable s array:from-list n-values 6 [0]
+  let q_s_a array:item array_q_s_a a
+
+  ; calcular o novo valor Q
+  let new_q_s_a q_s_a + learningRate * ( r_s_a + discountFactor * max_q_s'_a' - q_s_a )
+
+  ; atualizar o valor q no array de qvalues
+  array:set array_q_s_a a new_q_s_a
+
+  ; se não existia key na qTable para o estado s, então tem que fazer o pu do array de qValues
+  if not table:has-key? qTable s [
+    ; a table nao possui a chave do estado s, então tem que adicionar os qvalues
+    table:put qTable s array_q_s_a
+  ]
+
+
 end
 
 to goUp
   set heading 0
+  set action "goUp"
   move
 end
 
 to goDown
   set heading 180
+  set action "goDown"
   move
 end
 
 to goLeft
   set heading 270
+  set action "goLeft"
   move
 end
 
 to goRight
   set heading 90
+  set action "goRight"
   move
 end
 
 to move
-  if patch-ahead 1 != nobody and not [isWall] of patch-ahead 1 [
+  if patch-ahead 1 != nobody [
     move-to patch-ahead 1
+    if myPassenger != nobody [
+      ask myPassenger [
+        move-to [patch-here] of myself
+      ]
+    ]
   ]
-  set utility utility + [reward] of patch-here
+  set actionSuccess true
+  set utility utility + reward
 end
 
-to qLearningStep
-  let currentEpisode elapsedEpisodes
-  while [currentEpisode = elapsedEpisodes] [
-    qlearningextension:learning false
+to pickUp
+  if-else count passengers-here > 0 [
+    set myPassenger one-of passengers-here
+    set passengerBoarded true
+    set actionSuccess true
+  ][
+    set actionSuccess false
   ]
+  set action "pickUp"
+  set utility utility + reward
 end
 
+to dropOff
+  if-else myPassenger != nobody [
+    set myPassenger nobody
+    set passengerBoarded false
+    set actionSuccess true
+  ][
+    set actionSuccess false
+  ]
+  set action "dropOff"
+  set utility utility + reward
+end
 
-
-
-
-
+to printQTable
+  let estados table:keys qTable ; retorna uma lista
+  ; percorrer a lista, e executar prints
+  foreach estados [ s ->
+    let qValues table:get qTable s
+    show (word s "->" qValues ); vai printar o array de qValues para o estado s
+  ]
+end
 @#$#@#$#@
 GRAPHICS-WINDOW
 219
 10
-627
-319
+527
+119
 -1
 -1
 100.0
@@ -162,9 +318,9 @@ GRAPHICS-WINDOW
 0
 1
 0
-3
-0
 2
+0
+0
 0
 0
 1
@@ -188,44 +344,61 @@ NIL
 NIL
 1
 
-INPUTBOX
-651
-12
-762
-76
-learningRate
-1.0
+BUTTON
+800
+85
+940
+118
+qLearningStep
+ask taxis [ qLearningStep ]
+NIL
 1
-0
-Number
+T
+OBSERVER
+NIL
+NIL
+NIL
+NIL
+1
 
 INPUTBOX
-769
-12
-881
-77
-discountFactor
+580
+17
+691
+81
+learningRate
 0.2
 1
 0
 Number
 
 INPUTBOX
-650
-133
-776
-196
+698
+17
+810
+82
+discountFactor
+0.8
+1
+0
+Number
+
+INPUTBOX
+756
+135
+882
+198
 learningEpisodes
-300.0
+3000.0
 1
 0
 Number
 
 BUTTON
-650
-206
-753
-239
+763
+204
+866
+237
 NIL
 qLearning
 NIL
@@ -239,10 +412,10 @@ NIL
 1
 
 MONITOR
-649
-244
-774
-289
+755
+246
+880
+291
 NIL
 elapsedEpisodes
 17
@@ -254,12 +427,12 @@ BUTTON
 77
 134
 110
-NIL
 goUp
+ask taxis [ goUp ]
 NIL
 1
 T
-TURTLE
+OBSERVER
 NIL
 NIL
 NIL
@@ -271,12 +444,12 @@ BUTTON
 150
 143
 183
-NIL
 goDown
+ask taxis [goDown]
 NIL
 1
 T
-TURTLE
+OBSERVER
 NIL
 NIL
 NIL
@@ -288,12 +461,12 @@ BUTTON
 114
 91
 147
-NIL
 goLeft
+ask taxis [goLeft]
 NIL
 1
 T
-TURTLE
+OBSERVER
 NIL
 NIL
 NIL
@@ -305,12 +478,12 @@ BUTTON
 115
 191
 148
-NIL
 goRight
+ask taxis [goRight]
 NIL
 1
 T
-TURTLE
+OBSERVER
 NIL
 NIL
 NIL
@@ -322,12 +495,12 @@ BUTTON
 29
 213
 62
-NIL
 newEpisode
+ask taxis [newEpisode]
 NIL
 1
 T
-TURTLE
+OBSERVER
 NIL
 NIL
 NIL
@@ -336,36 +509,53 @@ NIL
 
 MONITOR
 30
-198
+261
 169
-243
+306
 agent utility
-[utility] of turtle 0
+sum [utility] of taxis
 3
 1
 11
 
 TEXTBOX
 27
-249
+312
 190
-294
+357
 The agent utility is the sum of rewards received during the episode
 12
 0.0
 1
 
 BUTTON
-651
-89
-762
-122
-NIL
-qLearningStep
+18
+201
+98
+234
+pickUp
+ask taxis [ pickUp ]
 NIL
 1
 T
-TURTLE
+OBSERVER
+NIL
+NIL
+NIL
+NIL
+1
+
+BUTTON
+104
+202
+189
+235
+dropOff
+ask taxis [ dropOff ]
+NIL
+1
+T
+OBSERVER
 NIL
 NIL
 NIL
